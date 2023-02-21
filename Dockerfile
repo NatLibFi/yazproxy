@@ -36,6 +36,7 @@ ENV CONF /conf/conf.xml
 COPY --from=builder /yaz /yaz
 COPY docker-entrypoint.sh /yaz/entrypoint.sh
 
+RUN chmod -R 775 /yaz
 RUN apk -U --no-cache add libxslt libxml2 libgcrypt libgpg-error icu gnutls \
   && addgroup -S yaz \
   && adduser -S -h /yaz yaz yaz \
