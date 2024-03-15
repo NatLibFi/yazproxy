@@ -40,4 +40,3 @@ RUN apk -U --no-cache add libxslt libxml2 libgcrypt libgpg-error icu gnutls
 COPY docker-entrypoint.sh /yaz/entrypoint.sh
 
 WORKDIR /yaz
-USER yaz
