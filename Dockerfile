@@ -35,12 +35,8 @@ ENV CONF /conf/conf.xml
 
 COPY --from=builder /yaz /yaz
 
-RUN apk -U --no-cache add libxslt libxml2 libgcrypt libgpg-error icu gnutls \
-  && addgroup -S yaz \
-  && adduser -S -h /yaz yaz yaz \
-  && chown -R yaz:yaz /yaz
+RUN apk -U --no-cache add libxslt libxml2 libgcrypt libgpg-error icu gnutls 
 
-COPY --chown=yaz:yaz docker-entrypoint.sh /yaz/entrypoint.sh
+COPY docker-entrypoint.sh /yaz/entrypoint.sh
 
 WORKDIR /yaz
-USER yaz
