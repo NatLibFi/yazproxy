@@ -38,5 +38,6 @@ COPY --from=builder /yaz /yaz
 RUN apk -U --no-cache add libxslt libxml2 libgcrypt libgpg-error icu gnutls
 
 COPY docker-entrypoint.sh /yaz/entrypoint.sh
+RUN chmod ugo+x /yaz/entrypoint.sh
 
 WORKDIR /yaz
