@@ -9,3 +9,5 @@ configure
 libtool
 autom4te.cache
 ChangeLog
+src/**/*.log
+*.trs
