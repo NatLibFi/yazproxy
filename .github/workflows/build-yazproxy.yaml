@@ -51,20 +51,12 @@ jobs:
      run: make -j4 check
 
  quayio:
-  name: Quay.io image builder & publisher
+  name: Quay.io image webhook
   runs-on: ubuntu-latest
 
   steps:
-   - uses: actions/checkout@v5
-   - name: Login to Quay.io
-     uses: docker/login-action@v3
+   - name: ipv6 webhook
+     uses: joelwmale/webhook-action@master
      with:
-      registry: quay.io
-      username: ${{ secrets.MELINDA_QUAY_IO_USERNAME }}
-      password: ${{ secrets.MELINDA_QUAY_IO_PASSWORD }}
-   - name: Build and publish image to Quay.io
-     uses: docker/build-push-action@v6
-     with:
-      context: .
-      push: true
-      tags: "ipv6"
+      url: ${{ secrets.QUAYIO_IPV6_WEBHOOK }}
+      body: '{}'
