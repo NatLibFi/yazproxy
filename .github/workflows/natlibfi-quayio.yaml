@@ -1,0 +1,62 @@
+name: Build and push yazproxy image to quayio
+
+on:
+  push:
+    branches:
+      - main
+      - test
+
+jobs:
+  push-quayio-image-latest:
+    name: Quay.io image webhook
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    # https://github.com/redhat-actions/buildah-build
+    steps:
+    - uses: actions/checkout@v5
+    - name: Build Image
+      id: build-image
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: yazproxy
+        tags: latest
+        containerfiles: |
+          ./Dockerfile
+    # https://github.com/redhat-actions/push-to-registry
+    - name: Push To quay.io
+      id: push-to-quay
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.build-image.outputs.image }}
+        tags: "latest"
+        registry: quay.io/natlibfi
+        username: ${{ secrets.MELINDA_QUAY_IO_USERNAME }}
+        password: ${{ secrets.MELINDA_QUAY_IO_PASSWORD }}
+
+  push-quayio-image-test:
+    name: Quay.io image webhook
+    if: github.ref == 'refs/heads/test'
+    runs-on: ubuntu-latest
+
+    # https://github.com/redhat-actions/buildah-build
+    steps:
+    - uses: actions/checkout@v5
+    - name: Build Image
+      id: build-image
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: yazproxy
+        tags: test
+        containerfiles: |
+          ./Dockerfile
+    # https://github.com/redhat-actions/push-to-registry
+    - name: Push To quay.io
+      id: push-to-quay
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.build-image.outputs.image }}
+        tags: "test"
+        registry: quay.io/natlibfi
+        username: ${{ secrets.MELINDA_QUAY_IO_USERNAME }}
+        password: ${{ secrets.MELINDA_QUAY_IO_PASSWORD }}
