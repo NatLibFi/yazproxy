@@ -61,7 +61,7 @@ jobs:
     uses: redhat-actions/buildah-build@v2
     with:
      image: yazproxy
-     tags: latest ${{ github.sha }}
+     tags: ipv6 ${{ github.sha }}
      containerfiles: |
       ./Dockerfile
 
