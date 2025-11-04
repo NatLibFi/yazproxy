@@ -55,8 +55,24 @@ jobs:
   runs-on: ubuntu-latest
 
   steps:
-   - name: ipv6 webhook
-     uses: joelwmale/webhook-action@master
-     with:
-      url: ${{ secrets.QUAYIO_IPV6_WEBHOOK }}
-      body: '{}'
+  - uses: actions/checkout@v4
+  - name: Build Image
+    id: build-image
+    uses: redhat-actions/buildah-build@v2
+    with:
+     image: yazproxy
+     tags: latest ${{ github.sha }}
+     containerfiles: |
+      ./Containerfile
+
+  # Podman Login action (https://github.com/redhat-actions/podman-login) also be used to log in,
+  # in which case 'username' and 'password' can be omitted.
+  - name: Push To quay.io
+    id: push-to-quay
+    uses: redhat-actions/push-to-registry@v2
+    with:
+     image: ${{ steps.build-image.outputs.image }}
+     tags: "ipv6"
+     registry: quay.io/natlibfi
+     username: ${{ secrets.MELINDA_QUAY_IO_USERNAME }}
+     password: ${{ secrets.MELINDA_QUAY_IO_PASSWORD }}
