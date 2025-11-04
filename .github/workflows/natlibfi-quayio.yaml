@@ -8,7 +8,7 @@ on:
 
 jobs:
   push-quayio-image-latest:
-    name: Quay.io image webhook
+    name: Quay.io image build and push latest
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
@@ -35,7 +35,7 @@ jobs:
         password: ${{ secrets.MELINDA_QUAY_IO_PASSWORD }}
 
   push-quayio-image-test:
-    name: Quay.io image webhook
+    name: Quay.io image build and push test
     if: github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
 
