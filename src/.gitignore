@@ -8,5 +8,5 @@ Makefile
 Makefile.in
 t-server
 tstthreads
-src/cdetails
-src/mod_helsinki_unit_test
+tests/cdetails
+tests/mod_helsinki_unit_test

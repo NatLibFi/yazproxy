@@ -1,5 +1,5 @@
 /* This file is part of YAZ proxy
-   Copyright (C) 1998-2011 Index Data
+   Copyright (C) 1998-2025 Index Data
 
 YAZ proxy is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
@@ -16,32 +16,36 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <cctype>
+#include <cerrno>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <yazproxy/module.h>
 
 #include <yaz/log.h>
 
-#include <time.h>
-
 #if YAZ_HAVE_XSLT
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <libxml/xinclude.h>
-#include <libxslt/xsltutils.h>
 #include <libxslt/transform.h>
+#include <libxslt/xsltutils.h>
 #endif
 
-struct IP_ADDRESS
-{
-    unsigned int a1, a2, a3, a4;
-};
+#include "mod_helsinki.h"
 
 void *my_init(void)
 {
-    return 0;  // no private data for handler
+    return 0; // no private data for handler
 }
 
 void my_destroy(void *p)
@@ -49,69 +53,257 @@ void my_destroy(void *p)
     // private data destroy
 }
 
-void zero_address(IP_ADDRESS *addr)
+int str_to_address(const char *str, struct sockaddr_storage *dst)
 {
-    addr->a1 = addr->a2 = addr->a3 = addr->a4 = 0;
+    struct addrinfo hints = {}, *res = nullptr;
+
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_flags = AI_NUMERICHOST;
+
+    int ret = getaddrinfo(str, nullptr, &hints, &res);
+    if (ret == 0 && res && res->ai_addr &&
+        res->ai_addrlen <= sizeof(struct sockaddr_storage)) {
+        memset(dst, 0, sizeof(struct sockaddr_storage));
+        memcpy(dst, reinterpret_cast<struct sockaddr_storage *>(res->ai_addr),
+               res->ai_addrlen);
+    }
+    if (res) {
+        freeaddrinfo(res);
+    }
+    return ret;
 }
 
-int str_to_address(const char *str, IP_ADDRESS *addr)
+void str_trim(char *str)
 {
-    zero_address(addr);
-    return sscanf(str, "%3u.%3u.%3u.%3u", &addr->a1, &addr->a2, &addr->a3, &addr->a4);
+    size_t leading{}, trailing{}, i{};
+    const size_t orig_len = strlen(str);
+    for (i = 0; isspace(str[i]) && i < orig_len; i++) { leading++; }
+    for (i = orig_len - 1; isspace(str[i]) && i > 0; i--) { trailing++; }
+    if (leading > 0) {
+        memmove(str, str + leading, orig_len - leading - trailing);
+    }
+    str[orig_len - leading - trailing] = '\0';
 }
 
-void str_to_address_range(const char *str,
-                          IP_ADDRESS *range_lo,
-                          IP_ADDRESS *range_hi)
+int str_to_address_range(const char *str, struct sockaddr_storage *out_lo,
+                         struct sockaddr_storage *out_hi)
 {
-    char lo[16], hi[16];
-    *lo = '\0';
-    *hi = '\0';
-    int num = sscanf(str, "%15[^-]-%15s", lo, hi);
+    char *lo = nullptr, *hi = nullptr;
+    char *saveptr, tmpstr[256];
+    int ret;
 
-    if (num == 1)
-    {
-        // Create a range from a single address or a part of it (e.g. 192.168)
-        num = str_to_address(lo, range_lo);
-        if (num == 1)
-        {
-            range_hi->a1 = range_lo->a1;
-            range_hi->a2 = range_hi->a3 = range_hi->a4 = 255;
-        }
-        else if (num == 2)
-        {
-            range_hi->a1 = range_lo->a1;
-            range_hi->a2 = range_lo->a2;
-            range_hi->a3 = range_hi->a4 = 255;
-        }
-        else if (num == 3)
-        {
-            range_hi->a1 = range_lo->a1;
-            range_hi->a2 = range_lo->a2;
-            range_hi->a3 = range_lo->a3;
-            range_hi->a4 = 255;
-        }
-        else
-        {
-            range_hi->a1 = range_lo->a1;
-            range_hi->a2 = range_lo->a2;
-            range_hi->a3 = range_lo->a3;
-            range_hi->a4 = range_lo->a4;
-        }
-        return;
+    snprintf(tmpstr, sizeof(tmpstr), "%s", str);
+    lo = strtok_r(tmpstr, "-", &saveptr);
+    if (lo != nullptr) {
+        hi = strtok_r(nullptr, "-", &saveptr);
+    }
+    if (lo == nullptr || hi == nullptr) {
+        out_lo = out_hi = nullptr;
+        return HELSINKI_PARSE_ERANGE;
     }
 
-    // If a range is specified, both ends need to be full addresses
-    if (str_to_address(lo, range_lo) != 4 || str_to_address(hi, range_hi) != 4)
-    {
-        zero_address(range_lo);
-        zero_address(range_hi);
+    str_trim(lo);
+    str_trim(hi);
+    ret = str_to_address(lo, out_lo);
+    if (ret != 0) {
+        return ret;
     }
+    ret = str_to_address(hi, out_hi);
+    return ret;
 }
 
-unsigned int address_to_int(IP_ADDRESS addr)
+int str_to_address_block(const char *str, struct IPBlock *dst)
 {
-    return addr.a1 << 24 | addr.a2 << 16 | addr.a3 << 8 | addr.a4;
+    char *addr_str = nullptr, *mask_str = nullptr;
+    char *saveptr, *endptr, tmpstr[256];
+    int ret;
+
+    snprintf(tmpstr, sizeof(tmpstr), "%s", str);
+    addr_str = strtok_r(tmpstr, "/", &saveptr);
+    if (addr_str != nullptr) {
+        mask_str = strtok_r(nullptr, "/", &saveptr);
+    }
+    if (addr_str == nullptr || mask_str == nullptr) {
+        return HELSINKI_PARSE_EBLOCK;
+    }
+    ret = str_to_address(addr_str, &dst->address_first);
+    dst->prefix = strtoul(mask_str, &endptr, 10);
+    if (errno ||
+        (dst->address_first.ss_family == AF_INET && dst->prefix > 32) ||
+        dst->prefix > 128 || *endptr != '\0') {
+        return HELSINKI_PARSE_EMASK;
+    }
+    return ret;
+}
+
+static bool addr_matches_addr(const struct sockaddr_storage *a,
+                              const struct sockaddr_storage *b)
+{
+    if (a->ss_family != b->ss_family) {
+        return false;
+    }
+    if (a->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *a_v6 =
+            reinterpret_cast<const struct sockaddr_in6 *>(a);
+        const struct sockaddr_in6 *b_v6 =
+            reinterpret_cast<const struct sockaddr_in6 *>(b);
+        if (memcmp(&(a_v6->sin6_addr.s6_addr), &(b_v6->sin6_addr.s6_addr),
+                   sizeof(a_v6->sin6_addr.s6_addr)) != 0) {
+            return false;
+        }
+    }
+    else {
+        const struct sockaddr_in *a_v4 =
+            reinterpret_cast<const struct sockaddr_in *>(a);
+        const struct sockaddr_in *b_v4 =
+            reinterpret_cast<const struct sockaddr_in *>(b);
+        if (a_v4->sin_addr.s_addr != b_v4->sin_addr.s_addr) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool addr_matches_range(const struct sockaddr_storage *peer,
+                               const struct sockaddr_storage *lo,
+                               const struct sockaddr_storage *hi)
+{
+    if (peer->ss_family != lo->ss_family || peer->ss_family != hi->ss_family) {
+        return false;
+    }
+
+    if (peer->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *peer_v6 =
+            reinterpret_cast<const struct sockaddr_in6 *>(peer);
+        const struct sockaddr_in6 *lo_v6 =
+            reinterpret_cast<const struct sockaddr_in6 *>(lo);
+        const struct sockaddr_in6 *hi_v6 =
+            reinterpret_cast<const struct sockaddr_in6 *>(hi);
+        const int cmp_lo =
+            memcmp(&peer_v6->sin6_addr, &lo_v6->sin6_addr, sizeof(in6_addr));
+        const int cmp_hi =
+            memcmp(&peer_v6->sin6_addr, &hi_v6->sin6_addr, sizeof(in6_addr));
+        return (cmp_lo >= 0 && cmp_hi <= 0);
+    }
+    else {
+        const struct sockaddr_in *peer_v4 =
+            reinterpret_cast<const struct sockaddr_in *>(peer);
+        const struct sockaddr_in *lo_v4 =
+            reinterpret_cast<const struct sockaddr_in *>(lo);
+        const struct sockaddr_in *hi_v4 =
+            reinterpret_cast<const struct sockaddr_in *>(hi);
+        const uint32_t peer_h = ntohl(peer_v4->sin_addr.s_addr);
+        const uint32_t lo_h = ntohl(lo_v4->sin_addr.s_addr);
+        const uint32_t hi_h = ntohl(hi_v4->sin_addr.s_addr);
+        return (peer_h >= lo_h && peer_h <= hi_h);
+    }
+    return true;
+}
+
+static bool match_prefix_bits(const uint8_t *a, const uint8_t *b, uint8_t bits,
+                              size_t width)
+{
+    if (bits == 0)
+        return true;
+
+    size_t full_bytes = bits / 8;
+    size_t rem_bits = bits % 8;
+
+    if (full_bytes > 0 && memcmp(a, b, full_bytes) != 0) {
+        return false;
+    }
+    if (rem_bits == 0) {
+        // full bytes matched, no remainder bits, prefix matches
+        return true;
+    }
+    if (full_bytes >= width) {
+        // prefix mask too wide
+        return false;
+    }
+
+    // build mask for last byte
+    uint8_t mask = static_cast<uint8_t>((0xff << (8 - rem_bits)));
+
+    return (a[full_bytes] & mask) == (b[full_bytes] & mask);
+}
+
+bool addr_matches_block(const struct sockaddr_storage *peer,
+                        const IPBlock *block)
+{
+    if (peer->ss_family != block->address_first.ss_family) {
+        return false;
+    }
+    if (peer->ss_family == AF_INET) {
+        const struct sockaddr_in *peer_v4 =
+            reinterpret_cast<const struct sockaddr_in *>(peer);
+        const struct sockaddr_in *base =
+            reinterpret_cast<const struct sockaddr_in *>(&block->address_first);
+        const uint8_t *a =
+            reinterpret_cast<const uint8_t *>(peer_v4->sin_addr.s_addr);
+        const uint8_t *b =
+            reinterpret_cast<const uint8_t *>(base->sin_addr.s_addr);
+        return match_prefix_bits(a, b, block->prefix, 4);
+    }
+    else {
+        const struct sockaddr_in6 *peer_v6 =
+            reinterpret_cast<const struct sockaddr_in6 *>(peer);
+        const struct sockaddr_in6 *base =
+            reinterpret_cast<const struct sockaddr_in6 *>(
+                &block->address_first);
+        const uint8_t *a =
+            reinterpret_cast<const uint8_t *>(peer_v6->sin6_addr.s6_addr);
+        const uint8_t *b =
+            reinterpret_cast<const uint8_t *>(base->sin6_addr.s6_addr);
+        return match_prefix_bits(a, b, block->prefix, 16);
+    }
+
+    // unsupported address family?
+    return false;
+}
+
+int parse_match(const char *str, IPMatchTarget *dst)
+{
+    if (strchr(str, '-'))
+    {
+        dst->match_kind = IPAddressRange;
+        return str_to_address_range(str, &dst->lo, &dst->hi);
+    }
+    else if (strchr(str, '/')) {
+        dst->match_kind = IPAddressBlock;
+        return str_to_address_block(str, &dst->block);
+    }
+    dst->match_kind = IPAddress;
+    return str_to_address(str, &dst->address);
+}
+
+bool addr_matches(const struct sockaddr_storage *peer,
+                 const IPMatchTarget *target)
+{
+    if (target->match_kind == IPAddressRange)
+    {
+        return addr_matches_range(peer, &target->lo, &target->hi);
+    }
+    else if (target->match_kind == IPAddressBlock) {
+        return addr_matches_block(peer, &target->block);
+    }
+    return addr_matches_addr(peer, &target->address);
+}
+
+static void int_to_warning(int code, char *buf, size_t len)
+{
+    switch (code) {
+        case HELSINKI_PARSE_EBLOCK:
+            strncpy(buf, "Bad address prefix", len);
+            break;
+        case HELSINKI_PARSE_ERANGE:
+            strncpy(buf, "Bad address range", len);
+            break;
+        case HELSINKI_PARSE_EMASK:
+            strncpy(buf, "Bad subnet mask", len);
+            break;
+        default:
+            strncpy(buf, gai_strerror(code), len);
+    }
 }
 
 int my_authenticate(void *user_handle,
@@ -122,6 +314,7 @@ int my_authenticate(void *user_handle,
 {
     // see if we have an "args" attribute
     const char *args = 0;
+    char warning[256];
 #if YAZ_HAVE_XSLT
     xmlNodePtr ptr = (xmlNodePtr) element_ptr;
     struct _xmlAttr *attr;
@@ -158,12 +351,17 @@ int my_authenticate(void *user_handle,
         const char *pIP = peer_IP;
         if (strncmp(pIP, "tcp:", 4) == 0)
             pIP += 4;
-        if (strncmp(pIP, "::ffff:", 7) == 0)
-            pIP += 7;
-        IP_ADDRESS peer_address;
-        if (str_to_address(pIP, &peer_address) != 4)
-            yaz_log(YLOG_WARN, "Authentication: could not decode peer IP address %s properly", pIP);
-        unsigned int peer_address_int = address_to_int(peer_address);
+
+        struct sockaddr_storage peer_address;
+        int int_parse_status = str_to_address(pIP, &peer_address);
+        if (int_parse_status != 0)
+        {
+            int_to_warning(int_parse_status, warning, sizeof(warning));
+            yaz_log(YLOG_WARN,
+                    "Authentication: could not decode peer IP address %s "
+                    "properly: %s",
+                    pIP, warning);
+        }
 
         FILE *f = fopen(ip_file, "r");
         if (!f)
@@ -174,6 +372,7 @@ int my_authenticate(void *user_handle,
         while (!feof(f))
         {
             char line[255];
+            IPMatchTarget match_target;
             *line = '\0';
             fgets(line, 254, f);
             line[254] = '\0';
@@ -183,14 +382,26 @@ int my_authenticate(void *user_handle,
             if (comment_pos)
                 *comment_pos = '\0';
 
-            IP_ADDRESS range_lo, range_hi;
-            str_to_address_range(line, &range_lo, &range_hi);
-            if (address_to_int(range_lo) <= peer_address_int && peer_address_int <= address_to_int(range_hi))
+            str_trim(line);
+            int parse_status = parse_match(line, &match_target);
+            int match_status;
+            switch (parse_status)
             {
-                status = YAZPROXY_RET_OK;
-                break;
+                case 0:
+                    if (addr_matches(&peer_address, &match_target))
+                    {
+                        status = YAZPROXY_RET_OK;
+                        goto ip_auth_finished;
+                    } else {
+                        status = YAZPROXY_RET_PERM;
+                    }
+                default:
+                    int_to_warning(parse_status, warning, sizeof(warning));
             }
+            yaz_log(YLOG_WARN, "Authentication: config line '%s': %s", line,
+                    warning);
         }
+    ip_auth_finished:
         fclose(f);
         if (status == YAZPROXY_RET_OK)
         {
@@ -208,7 +419,7 @@ int my_authenticate(void *user_handle,
     time_t current_time;
     time(&current_time);
     struct tm *local_time = localtime(&current_time);
-    char current_date[10];
+    char current_date[64];
     sprintf(current_date, "%04d%02d%02d", local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday);
 
     FILE *f = fopen(user_file, "r");
@@ -264,4 +475,3 @@ Yaz_ProxyModule_entry yazproxy_module = {
  * End:
  * vim: shiftwidth=4 tabstop=8 expandtab
  */
-
