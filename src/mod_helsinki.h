@@ -57,4 +57,10 @@ int str_to_address_range(const char *str, struct sockaddr_storage *dst_lo,
                                 struct sockaddr_storage *dst_hi);
 void str_trim(char *str);
 
+int my_authenticate(void *user_handle,
+                    const char *target_name,
+                    void *element_ptr,
+                    const char *user, const char *group, const char *password,
+                    const char *peer_IP);
+
 #endif /* MOD_HELSINKI_H */

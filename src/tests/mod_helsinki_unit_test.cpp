@@ -16,9 +16,13 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 #include "../mod_helsinki.h"
+#include "yazproxy/module.h"
+#include "gtest/gtest.h"
 #include <arpa/inet.h>
 #include <cstring>
 #include <gtest/gtest.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -164,9 +168,8 @@ TEST(Match, All)
     const char *ipv6_block = "2001:14ba:b1::/64";
     test.ss_family = AF_INET6;
     ASSERT_EQ(
-        inet_pton(
-            AF_INET6, "2001:14ba:b1::ab:cd",
-            &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
+        inet_pton(AF_INET6, "2001:14ba:b1::ab:cd",
+                  &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
         1);
     ASSERT_EQ(test.ss_family, AF_INET6);
     ASSERT_EQ(parse_match(ipv6_block, &tgt), 0);
@@ -213,9 +216,8 @@ TEST(NoMatch, All)
     const char *ipv6_block = "2001:14ba:b1::/64";
     test.ss_family = AF_INET6;
     ASSERT_EQ(
-        inet_pton(
-            AF_INET6, "2001:14ba:e1::",
-            &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
+        inet_pton(AF_INET6, "2001:14ba:e1::",
+                  &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
         1);
     ASSERT_EQ(parse_match(ipv6_block, &tgt), 0);
     EXPECT_FALSE(addr_matches(&test, &tgt));
@@ -230,6 +232,65 @@ TEST(NoMatch, All)
     ASSERT_EQ(parse_match(ipv6_range, &tgt), 0);
     EXPECT_FALSE(addr_matches(&test, &tgt));
 }
+
+struct AuthTestParam {
+    const char *peer_ip;
+    int expected_ret;
+};
+
+class AuthIpRulesFixture : public ::testing::TestWithParam<AuthTestParam> {
+  protected:
+    xmlDocPtr doc_ = nullptr;
+    xmlNodePtr root_ = nullptr;
+
+    void SetUp() override
+    {
+#if YAZ_HAVE_XSLT
+        xmlInitParser();
+        const char *xml = "<client-authentication module=\"helsinki\""
+                          " args=\"fixtures/iprules\"/>";
+        xmlDocPtr doc = xmlReadMemory(xml, strlen(xml), "in-memory.xml",
+                                      nullptr, XML_PARSE_NONET);
+        ASSERT_NE(doc, nullptr);
+
+        root_ = xmlDocGetRootElement(doc);
+        ASSERT_NE(root_, nullptr);
+        ASSERT_STREQ(reinterpret_cast<const char *>(root_->name),
+                     "client-authentication");
+#else
+        GTEST_SKIP() << "YAZ_HAVE_XSLT not defined";
+#endif
+    }
+
+    void TearDown() override
+    {
+        if (doc_)
+            xmlFreeDoc(doc_);
+    }
+};
+
+TEST_P(AuthIpRulesFixture, Success)
+{
+#if YAZ_HAVE_XSLT
+    const auto &p = GetParam();
+    int ret = my_authenticate(nullptr, nullptr, root_, nullptr, nullptr,
+                              nullptr, p.peer_ip);
+    ASSERT_EQ(ret, p.expected_ret)
+        << "IP authentication failed for " << p.peer_ip;
+#endif
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Authenticate,
+    AuthIpRulesFixture,
+    ::testing::Values(
+        AuthTestParam{"198.51.100.2", YAZPROXY_RET_OK},
+        AuthTestParam{"198.51.100.50", YAZPROXY_RET_OK},
+        AuthTestParam{"10.0.0.25", YAZPROXY_RET_PERM},
+        AuthTestParam{"198.51.100.30", YAZPROXY_RET_PERM},
+        AuthTestParam{"2001:14ba:d1::12:34", YAZPROXY_RET_PERM}
+    )
+);
 
 } // namespace
 /*

@@ -245,9 +245,9 @@ bool addr_matches_block(const struct sockaddr_storage *peer,
         const struct sockaddr_in *base =
             reinterpret_cast<const struct sockaddr_in *>(&block->address_first);
         const uint8_t *a =
-            reinterpret_cast<const uint8_t *>(peer_v4->sin_addr.s_addr);
+            reinterpret_cast<const uint8_t *>(&peer_v4->sin_addr.s_addr);
         const uint8_t *b =
-            reinterpret_cast<const uint8_t *>(base->sin_addr.s_addr);
+            reinterpret_cast<const uint8_t *>(&base->sin_addr.s_addr);
         return match_prefix_bits(a, b, block->prefix, 4);
     }
     else {
@@ -257,9 +257,9 @@ bool addr_matches_block(const struct sockaddr_storage *peer,
             reinterpret_cast<const struct sockaddr_in6 *>(
                 &block->address_first);
         const uint8_t *a =
-            reinterpret_cast<const uint8_t *>(peer_v6->sin6_addr.s6_addr);
+            reinterpret_cast<const uint8_t *>(&peer_v6->sin6_addr.s6_addr);
         const uint8_t *b =
-            reinterpret_cast<const uint8_t *>(base->sin6_addr.s6_addr);
+            reinterpret_cast<const uint8_t *>(&base->sin6_addr.s6_addr);
         return match_prefix_bits(a, b, block->prefix, 16);
     }
 
@@ -371,6 +371,7 @@ int my_authenticate(void *user_handle,
                     "Authentication: could not decode peer IP address %s "
                     "properly: %s",
                     pIP, warning);
+            return YAZPROXY_RET_PERM;
         }
 
         FILE *f = fopen(ip_file, "r");
@@ -395,24 +396,27 @@ int my_authenticate(void *user_handle,
             if (strlen(line) == 0) {
                 continue;
             }
+
+            yaz_log(YLOG_DEBUG, "Authentication: comparing IP address %s against rule '%s'", pIP, line);
+
             int parse_status = parse_match(line, &match_target);
             if(parse_status == 0)
             {
                 if (addr_matches(&peer_address, &match_target))
                 {
                     status = YAZPROXY_RET_OK;
-                    goto ip_auth_finished;
-                } else {
-                    status = YAZPROXY_RET_PERM;
+                    break;
                 }
             }
             else {
                 int_to_warning(parse_status, warning, sizeof(warning));
+                yaz_log(YLOG_WARN,
+                        "Authentication: problem parsing config line '%s': %s",
+                        line,
+                        warning);
             }
-            yaz_log(YLOG_WARN, "Authentication: config line '%s': %s", line,
-                    warning);
         }
-    ip_auth_finished:
+
         fclose(f);
         if (status == YAZPROXY_RET_OK)
         {
