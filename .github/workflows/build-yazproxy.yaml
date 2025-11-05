@@ -26,7 +26,7 @@ jobs:
      run: >
       sudo apt install autoconf automake libtool gcc g++ make bison
       tclsh xsltproc docbook docbook-xml docbook-xsl
-      pkg-config libxslt1-dev libgnutls28-dev libicu-dev
+      pkg-config libxslt1-dev libgnutls28-dev libicu-dev libgtest-dev
    - name: Run buildconf for YAZ
      run: cd yaz && ./buildconf.sh
    - name: Run configure for YAZ
