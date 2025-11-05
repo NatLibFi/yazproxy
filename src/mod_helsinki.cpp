@@ -318,6 +318,11 @@ int my_authenticate(void *user_handle,
                     const char *user, const char *group, const char *password,
                     const char *peer_IP)
 {
+    // Username/password authentication has been removed
+    (void) user;
+    (void) group;
+    (void) password;
+
     // see if we have an "args" attribute
     const char *args = 0;
     char warning[256];
@@ -334,15 +339,12 @@ int my_authenticate(void *user_handle,
 #endif
     // args holds args (or NULL if none are provided)
 
-    yaz_log(YLOG_LOG, "Authentication: authenticating user %s, address %s", user ? user : "(none)", peer_IP ? peer_IP : "-");
+    yaz_log(YLOG_LOG, "Authentication: address %s", peer_IP);
 
     // authentication handler
-    char user_file[255], ip_file[255];
-    *user_file = '\0';
-    *ip_file = '\0';
-    sscanf(args, "%254[^:]:%254s", user_file, ip_file);
+    const char *ip_file = args;
 
-    yaz_log(YLOG_DEBUG, "Authentication: user file: %s, ip file: %s", user_file, ip_file);
+    yaz_log(YLOG_DEBUG, "Authentication: ip file: %s", ip_file);
 
     // Check if the IP address is listed in the file of allowed address ranges.
     // The format of the file:
@@ -379,9 +381,8 @@ int my_authenticate(void *user_handle,
         {
             char line[255];
             IPMatchTarget match_target;
-            *line = '\0';
+            memset(line, '\0', sizeof(line));
             fgets(line, 254, f);
-            line[254] = '\0';
 
             // Remove comments
             char *comment_pos = strchr(line, '#');
@@ -389,20 +390,22 @@ int my_authenticate(void *user_handle,
                 *comment_pos = '\0';
 
             str_trim(line);
+            if (strlen(line) == 0) {
+                continue;
+            }
             int parse_status = parse_match(line, &match_target);
-            int match_status;
-            switch (parse_status)
+            if(parse_status != 0)
             {
-                case 0:
-                    if (addr_matches(&peer_address, &match_target))
-                    {
-                        status = YAZPROXY_RET_OK;
-                        goto ip_auth_finished;
-                    } else {
-                        status = YAZPROXY_RET_PERM;
-                    }
-                default:
-                    int_to_warning(parse_status, warning, sizeof(warning));
+                if (addr_matches(&peer_address, &match_target))
+                {
+                    status = YAZPROXY_RET_OK;
+                    goto ip_auth_finished;
+                } else {
+                    status = YAZPROXY_RET_PERM;
+                }
+            }
+            else {
+                int_to_warning(parse_status, warning, sizeof(warning));
             }
             yaz_log(YLOG_WARN, "Authentication: config line '%s': %s", line,
                     warning);
@@ -412,51 +415,8 @@ int my_authenticate(void *user_handle,
         if (status == YAZPROXY_RET_OK)
         {
             yaz_log(YLOG_LOG, "Authentication: IP address %s allowed", pIP);
-            return YAZPROXY_RET_OK;
         }
     }
-
-    if (!user || !password || !*user_file)
-    {
-        yaz_log(YLOG_LOG, "Authentication: anonymous authentication failed");
-            return YAZPROXY_RET_PERM;
-    }
-
-    time_t current_time;
-    time(&current_time);
-    struct tm *local_time = localtime(&current_time);
-    char current_date[64];
-    sprintf(current_date, "%04d%02d%02d", local_time->tm_year + 1900, local_time->tm_mon + 1, local_time->tm_mday);
-
-    FILE *f = fopen(user_file, "r");
-    if (!f)
-    {
-        yaz_log(YLOG_WARN, "Authentication: could not open user authentication file %s", user_file);
-            return YAZPROXY_RET_PERM;
-    }
-    while (!feof(f))
-    {
-        char line[255];
-        *line = '\0';
-        fgets(line, 254, f);
-        line[254] = '\0';
-        char *p = strchr(line, '\n');
-        if (p) *p = '\0';
-
-        char f_user[255], f_password[255], f_expiry[255];
-        *f_user = '\0';
-        *f_password = '\0';
-        *f_expiry = '\0';
-        sscanf(line, "%254[^:]:%254[^:]:%254s", f_user, f_password, f_expiry);
-
-        if (strcmp(user, f_user) == 0 && strcmp(password, f_password) == 0 && (!*f_expiry || strcmp(current_date, f_expiry) <= 0))
-        {
-            status = YAZPROXY_RET_OK;
-            break;
-        }
-    }
-    fclose(f);
-    yaz_log(YLOG_LOG, "Authentication: %s for user %s", status == YAZPROXY_RET_OK ? "successful" : "failed", user);
     return status;
 }
 
