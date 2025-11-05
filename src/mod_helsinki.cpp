@@ -339,7 +339,7 @@ int my_authenticate(void *user_handle,
 #endif
     // args holds args (or NULL if none are provided)
 
-    yaz_log(YLOG_LOG, "Authentication: address %s", peer_IP);
+    yaz_log(YLOG_LOG, "Authentication: authenticating address %s", peer_IP);
 
     // authentication handler
     const char *ip_file = args;
@@ -348,9 +348,11 @@ int my_authenticate(void *user_handle,
 
     // Check if the IP address is listed in the file of allowed address ranges.
     // The format of the file:
-    // 192.168.0
+    // 192.168.0.0
     // 192.168.0.100
     // 192.168.0.1-192.168.0.200
+    // 192.168.0.1/24
+    // (also supports IPv6)
     int status = YAZPROXY_RET_PERM;
     if (*ip_file && peer_IP)
     {
@@ -394,7 +396,7 @@ int my_authenticate(void *user_handle,
                 continue;
             }
             int parse_status = parse_match(line, &match_target);
-            if(parse_status != 0)
+            if(parse_status == 0)
             {
                 if (addr_matches(&peer_address, &match_target))
                 {
