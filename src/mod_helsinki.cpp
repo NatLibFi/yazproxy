@@ -61,6 +61,10 @@ int str_to_address(const char *str, struct sockaddr_storage *dst)
     hints.ai_flags = AI_NUMERICHOST;
 
     int ret = getaddrinfo(str, nullptr, &hints, &res);
+    // TODO: Technically getaddrinfo() could return multiple addresses, but
+    // because we have AI_NUMERICHOST, it's probably unlikely or not relevant,
+    // so we only take the first one in the linked list.  That said, if we run
+    // into bugs, this might be a good place to look.
     if (ret == 0 && res && res->ai_addr &&
         res->ai_addrlen <= sizeof(struct sockaddr_storage)) {
         memset(dst, 0, sizeof(struct sockaddr_storage));
