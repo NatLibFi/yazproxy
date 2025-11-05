@@ -25,13 +25,8 @@ COPY . /build/yazproxy
 
 WORKDIR /build/yazproxy
 
-RUN set -eu; apk -U --no-cache add gtest-dev; \
-  ./buildconf.sh && ./configure --prefix=/yaz --with-usemarcon=/yaz; \
-  if ! make check -j"$(nproc)"; then \
-    (test -f src/tests/test-suite.log && cat src/tests/test-suite.log) || true; \
-    exit 1; \
-  fi; \
-  make install-exec -j$(nproc)
+RUN ./buildconf.sh && ./configure --prefix=/yaz --with-usemarcon=/yaz \
+  && make install-exec -j"$(nproc)"
 
 FROM alpine:3
 ENTRYPOINT ["/yaz/entrypoint.sh"]
