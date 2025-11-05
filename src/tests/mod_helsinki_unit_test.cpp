@@ -138,6 +138,12 @@ TEST(Parse, RangeWithWhitespace)
     EXPECT_EQ(hi_actual_addr->sin_addr.s_addr, hi_expected.sin_addr.s_addr);
 }
 
+TEST(Parse, EmptyInput)
+{
+    IPMatchTarget tgt;
+    ASSERT_NE(parse_match("", &tgt), 0);
+}
+
 TEST(Match, All)
 {
     struct sockaddr_storage test = {};
