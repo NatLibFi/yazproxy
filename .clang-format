@@ -1,0 +1,11 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+Language: Cpp
+BreakBeforeBraces: Linux
+UseTab: Never
+IndentCaseLabels: true
+Cpp11BracedListStyle: true
+AllowShortBlocksOnASingleLine: Always
+AllowShortFunctionsOnASingleLine: All
+AllowShortLoopsOnASingleLine: true
