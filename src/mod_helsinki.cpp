@@ -344,6 +344,11 @@ int my_authenticate(void *user_handle,
     // authentication handler
     const char *ip_file = args;
 
+    if(!ip_file) {
+        yaz_log(YLOG_WARN, "Authentication: no configured ip rules file");
+        return YAZPROXY_RET_PERM;
+    }
+
     yaz_log(YLOG_DEBUG, "Authentication: ip file: %s", ip_file);
 
     // Check if the IP address is listed in the file of allowed address ranges.
@@ -380,12 +385,10 @@ int my_authenticate(void *user_handle,
             yaz_log(YLOG_WARN, "Authentication: could not open ip authentication file %s", ip_file);
                 return YAZPROXY_RET_PERM;
         }
-        while (!feof(f))
+        char line[256];
+        while (fgets(line, sizeof(line), f))
         {
-            char line[255];
             IPMatchTarget match_target;
-            memset(line, '\0', sizeof(line));
-            fgets(line, 254, f);
 
             // Remove comments
             char *comment_pos = strchr(line, '#');
