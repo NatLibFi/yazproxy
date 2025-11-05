@@ -127,8 +127,10 @@ int str_to_address_block(const char *str, struct IPBlock *dst)
         return HELSINKI_PARSE_EBLOCK;
     }
     ret = str_to_address(addr_str, &dst->address_first);
-    dst->prefix = strtoul(mask_str, &endptr, 10);
-    if (errno ||
+    errno = 0;
+    unsigned long prefix_ul = strtoul(mask_str, &endptr, 10);
+    dst->prefix = static_cast<unsigned>(prefix_ul);
+    if (errno == ERANGE ||
         (dst->address_first.ss_family == AF_INET && dst->prefix > 32) ||
         dst->prefix > 128 || *endptr != '\0') {
         return HELSINKI_PARSE_EMASK;
