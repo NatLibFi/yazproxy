@@ -148,91 +148,63 @@ TEST(Parse, EmptyInput)
     ASSERT_NE(parse_match("", &tgt), 0);
 }
 
-TEST(Match, All)
+struct MatchParam {
+    const char *rule;
+    const char *peer_ip;
+    const sa_family_t af;
+    const bool expect_true = true;
+};
+
+class MatchTargetFixtures : public ::testing::TestWithParam<MatchParam> {
+  protected:
+    struct sockaddr_storage test_;
+    IPMatchTarget tgt_;
+};
+
+TEST_P(MatchTargetFixtures, Match)
 {
-    struct sockaddr_storage test = {};
-    IPMatchTarget tgt = {};
-
-    /* match IPv4 address */
-    const char *ipv4 = "198.51.100.120";
-    test.ss_family = AF_INET;
-    ASSERT_EQ(
-        inet_pton(AF_INET, "198.51.100.120",
-                  &reinterpret_cast<struct sockaddr_in *>(&test)->sin_addr),
-        1);
-    ASSERT_EQ(test.ss_family, AF_INET);
-    ASSERT_EQ(parse_match(ipv4, &tgt), 0);
-    EXPECT_TRUE(addr_matches(&test, &tgt));
-
-    /* match IPv6 address block */
-    const char *ipv6_block = "2001:14ba:b1::/64";
-    test.ss_family = AF_INET6;
-    ASSERT_EQ(
-        inet_pton(AF_INET6, "2001:14ba:b1::ab:cd",
-                  &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
-        1);
-    ASSERT_EQ(test.ss_family, AF_INET6);
-    ASSERT_EQ(parse_match(ipv6_block, &tgt), 0);
-    EXPECT_TRUE(addr_matches(&test, &tgt));
-
-    /* match IPv6 address range */
-    const char *ipv6_range = "2001:14ba:b1:: - 2001:14ba:b1:60::ff";
-    test.ss_family = AF_INET6;
-    ASSERT_EQ(
-        inet_pton(AF_INET6, "2001:14ba:b1::12:34",
-                  &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
-        1);
-    ASSERT_EQ(test.ss_family, AF_INET6);
-    ASSERT_EQ(parse_match(ipv6_range, &tgt), 0);
-    EXPECT_TRUE(addr_matches(&test, &tgt));
+    const auto &p = GetParam();
+    ASSERT_TRUE(p.af == AF_INET || p.af == AF_INET6);
+    test_.ss_family = p.af;
+    int parse_ip_result =
+        p.af == AF_INET
+            ? inet_pton(
+                  p.af, p.peer_ip,
+                  &reinterpret_cast<struct sockaddr_in *>(&test_)->sin_addr)
+            : inet_pton(
+                  p.af, p.peer_ip,
+                  &reinterpret_cast<struct sockaddr_in6 *>(&test_)->sin6_addr);
+    ASSERT_EQ(parse_ip_result, 1) << "Failed to parse peer_ip";
+    ASSERT_EQ(parse_match(p.rule, &tgt_), 0) << "Failed to parse IP match rule";
+    int match_res = addr_matches(&test_, &tgt_);
+    if (p.expect_true)
+        EXPECT_TRUE(match_res) << "IP did not match rule";
+    else
+        EXPECT_FALSE(match_res) << "IP matched rule";
 }
 
-TEST(NoMatch, All)
-{
-    struct sockaddr_storage test = {};
-    IPMatchTarget tgt = {};
-
-    /* match IPv4 address */
-    const char *ipv4 = "198.51.100.120";
-    test.ss_family = AF_INET;
-    ASSERT_EQ(
-        inet_pton(AF_INET, "198.51.100.130",
-                  &reinterpret_cast<struct sockaddr_in *>(&test)->sin_addr),
-        1);
-    ASSERT_EQ(parse_match(ipv4, &tgt), 0);
-    EXPECT_FALSE(addr_matches(&test, &tgt));
-
-    /* match IPv4 address range */
-    const char *ipv4_range = "198.51.100.1 - 198.51.100.50";
-    test.ss_family = AF_INET;
-    ASSERT_EQ(
-        inet_pton(AF_INET, "198.51.100.60",
-                  &reinterpret_cast<struct sockaddr_in *>(&test)->sin_addr),
-        1);
-    ASSERT_EQ(parse_match(ipv4_range, &tgt), 0);
-    EXPECT_FALSE(addr_matches(&test, &tgt));
-
-    /* match IPv6 address block */
-    const char *ipv6_block = "2001:14ba:b1::/64";
-    test.ss_family = AF_INET6;
-    ASSERT_EQ(
-        inet_pton(AF_INET6, "2001:14ba:e1::",
-                  &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
-        1);
-    ASSERT_EQ(parse_match(ipv6_block, &tgt), 0);
-    EXPECT_FALSE(addr_matches(&test, &tgt));
-
-    /* match IPv6 address range */
-    const char *ipv6_range = "2001:14ba:b1:: - 2001:14ba:b1:60::ff";
-    test.ss_family = AF_INET6;
-    ASSERT_EQ(
-        inet_pton(AF_INET6, "2001:14ba:d1::12:34",
-                  &reinterpret_cast<struct sockaddr_in6 *>(&test)->sin6_addr),
-        1);
-    ASSERT_EQ(parse_match(ipv6_range, &tgt), 0);
-    EXPECT_FALSE(addr_matches(&test, &tgt));
-}
-
+INSTANTIATE_TEST_SUITE_P(
+    Match, MatchTargetFixtures,
+    ::testing::Values(
+        // should match
+        MatchParam{"198.51.100.120", "198.51.100.120", AF_INET, true},
+        MatchParam{"2001:14ba:b1::/64", "2001:14ba:b1::ab:cd", AF_INET6, true},
+        MatchParam{"2001:14ba:b1:: - 2001:14ba:b1:60::ff",
+                   "2001:14ba:b1::12:34", AF_INET6, true},
+        // should not match
+        MatchParam{"198.51.100.120", "198.51.100.130", AF_INET, false},
+        MatchParam{"198.51.100.120", "198.51.100.121", AF_INET, false},
+        MatchParam{"198.51.100.120", "198.51.100.119", AF_INET, false},
+        MatchParam{"198.51.100.1 - 198.51.100.50", "198.51.100.51", AF_INET,
+                   false},
+        MatchParam{"10.1.1.1/24", "10.1.2.1", AF_INET, false},
+        MatchParam{"2001:14ba:b1::/64", "2001:14ba:b1:1::1", AF_INET6, false},
+        MatchParam{"2001:14ba:b1:: - 2001:14ba:b1:60::ff",
+                   "2001:14ba:d1::12:34", AF_INET6, false},
+        MatchParam{"2001:14ba:b1:: - 2001:14ba:b1:60::ff",
+                   "2001:14BA:B0:FFFF:FFFF:FFFF:FFFF:FFFF", AF_INET6, false},
+        MatchParam{"2001:14ba:b1:: - 2001:14ba:b1:60::ff",
+                   "2001:14ba:b1:60::100", AF_INET6, false}));
 struct AuthTestParam {
     const char *peer_ip;
     int expected_ret;
@@ -249,11 +221,11 @@ class AuthIpRulesFixture : public ::testing::TestWithParam<AuthTestParam> {
         xmlInitParser();
         const char *xml = "<client-authentication module=\"helsinki\""
                           " args=\"fixtures/iprules\"/>";
-        xmlDocPtr doc = xmlReadMemory(xml, strlen(xml), "in-memory.xml",
-                                      nullptr, XML_PARSE_NONET);
-        ASSERT_NE(doc, nullptr);
+        doc_ = xmlReadMemory(xml, strlen(xml), "in-memory.xml", nullptr,
+                             XML_PARSE_NONET);
+        ASSERT_NE(doc_, nullptr);
 
-        root_ = xmlDocGetRootElement(doc);
+        root_ = xmlDocGetRootElement(doc_);
         ASSERT_NE(root_, nullptr);
         ASSERT_STREQ(reinterpret_cast<const char *>(root_->name),
                      "client-authentication");
@@ -281,16 +253,12 @@ TEST_P(AuthIpRulesFixture, Success)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Authenticate,
-    AuthIpRulesFixture,
-    ::testing::Values(
-        AuthTestParam{"198.51.100.2", YAZPROXY_RET_OK},
-        AuthTestParam{"198.51.100.50", YAZPROXY_RET_OK},
-        AuthTestParam{"10.0.0.25", YAZPROXY_RET_PERM},
-        AuthTestParam{"198.51.100.30", YAZPROXY_RET_PERM},
-        AuthTestParam{"2001:14ba:d1::12:34", YAZPROXY_RET_PERM}
-    )
-);
+    Authenticate, AuthIpRulesFixture,
+    ::testing::Values(AuthTestParam{"198.51.100.2", YAZPROXY_RET_OK},
+                      AuthTestParam{"198.51.100.50", YAZPROXY_RET_OK},
+                      AuthTestParam{"10.0.0.25", YAZPROXY_RET_PERM},
+                      AuthTestParam{"198.51.100.30", YAZPROXY_RET_PERM},
+                      AuthTestParam{"2001:14ba:d1::12:34", YAZPROXY_RET_PERM}));
 
 } // namespace
 /*
