@@ -81,7 +81,7 @@ void str_trim(char *str)
 {
     size_t leading{}, trailing{}, i{};
     const size_t orig_len = strlen(str);
-    for (i = 0; isspace(str[i]) && i < orig_len; i++) { leading++; }
+    for (i = 0; i < orig_len && isspace(str[i]); i++) { leading++; }
     for (i = orig_len - 1; isspace(str[i]) && i > 0; i--) { trailing++; }
     if (leading > 0) {
         memmove(str, str + leading, orig_len - leading - trailing);
@@ -102,7 +102,6 @@ int str_to_address_range(const char *str, struct sockaddr_storage *out_lo,
         hi = strtok_r(nullptr, "-", &saveptr);
     }
     if (lo == nullptr || hi == nullptr) {
-        out_lo = out_hi = nullptr;
         return HELSINKI_PARSE_ERANGE;
     }
 
@@ -118,7 +117,7 @@ int str_to_address_range(const char *str, struct sockaddr_storage *out_lo,
 
 int str_to_address_block(const char *str, struct IPBlock *dst)
 {
-    char *addr_str = nullptr, *mask_str = nullptr;
+    const char *addr_str = nullptr, *mask_str = nullptr;
     char *saveptr, *endptr, tmpstr[256];
     int ret;
 
@@ -324,7 +323,7 @@ int my_authenticate(void *user_handle,
     (void) password;
 
     // see if we have an "args" attribute
-    const char *args = 0;
+    const char *args = nullptr;
     char warning[256];
 #if YAZ_HAVE_XSLT
     xmlNodePtr ptr = (xmlNodePtr) element_ptr;
@@ -332,9 +331,9 @@ int my_authenticate(void *user_handle,
 
     for (attr = ptr->properties; attr; attr = attr->next)
     {
-        if (!strcmp((const char *) attr->name, "args") &&
+        if (!strcmp(reinterpret_cast<const char *>(attr->name), "args") &&
             attr->children && attr->children->type == XML_TEXT_NODE)
-            args = (const char *) attr->children->content;
+            args = reinterpret_cast<const char *>(attr->children->content);
     }
 #endif
     // args holds args (or NULL if none are provided)
