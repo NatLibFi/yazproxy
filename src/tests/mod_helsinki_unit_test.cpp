@@ -188,6 +188,8 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(
         // should match
         MatchParam{"198.51.100.120", "198.51.100.120", AF_INET, true},
+        MatchParam{"10.10.100.1/20", "10.10.96.1", AF_INET, true},
+        MatchParam{"10.10.100.1/20", "10.10.111.255", AF_INET, true},
         MatchParam{"2001:14ba:b1::/64", "2001:14ba:b1::ab:cd", AF_INET6, true},
         MatchParam{"2001:14ba:b1:: - 2001:14ba:b1:60::ff",
                    "2001:14ba:b1::12:34", AF_INET6, true},
@@ -198,6 +200,8 @@ INSTANTIATE_TEST_SUITE_P(
         MatchParam{"198.51.100.1 - 198.51.100.50", "198.51.100.51", AF_INET,
                    false},
         MatchParam{"10.1.1.1/24", "10.1.2.1", AF_INET, false},
+        MatchParam{"10.10.100.1/20", "10.10.95.255", AF_INET, false},
+        MatchParam{"10.10.100.1/20", "10.10.112.1", AF_INET, false},
         MatchParam{"2001:14ba:b1::/64", "2001:14ba:b1:1::1", AF_INET6, false},
         MatchParam{"2001:14ba:b1:: - 2001:14ba:b1:60::ff",
                    "2001:14ba:d1::12:34", AF_INET6, false},
