@@ -17,14 +17,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 #include "../mod_helsinki.h"
 #include "yazproxy/module.h"
-#include "gtest/gtest.h"
 #include <arpa/inet.h>
 #include <cstring>
 #include <gtest/gtest.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+
+#if YAZ_HAVE_XSLT
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+#endif
 
 namespace {
 
