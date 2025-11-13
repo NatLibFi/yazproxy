@@ -6,6 +6,7 @@ yazproxy
 *.la
 Makefile
 Makefile.in
-cdetails
 t-server
 tstthreads
+tests/cdetails
+tests/mod_helsinki_unit_test

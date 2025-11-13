@@ -8,13 +8,9 @@ libyazproxy_la_SOURCES= yaz-proxy.cpp yaz-proxy-config.cpp yaz-bw.cpp \
  modules.cpp limit-connect.cpp
 
 bin_PROGRAMS = yazproxy
-check_PROGRAMS = cdetails
 noinst_PROGRAMS = tstthreads t-server
 
-TESTS=$(check_PROGRAMS)
-
 yazproxy_SOURCES=yaz-proxy-main.cpp
-cdetails_SOURCES=cdetails.cpp
 tstthreads_SOURCES=tstthreads.cpp
 t_server_SOURCES=t-server.cpp
 

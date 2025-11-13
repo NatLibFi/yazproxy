@@ -1,6 +1,6 @@
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = src include etc doc 
+SUBDIRS = src include etc doc src/tests
 
 ACLOCAL_AMFLAGS = -I m4
 
