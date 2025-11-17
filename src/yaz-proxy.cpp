@@ -2083,7 +2083,7 @@ void Yaz_Proxy::HTTP_Forwarded(Z_GDU *z_gdu)
         {
             if (!yaz_strcasecmp(header->name, "X-Forwarded-For"))
             {
-                auto pos = std::strrchr(header->value, 'n');
+                auto pos = std::strrchr(header->value, ',');
                 if (!pos)
                 {
                     // no comma found. this header line only has one ip
