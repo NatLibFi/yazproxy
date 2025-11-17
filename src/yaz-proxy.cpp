@@ -2078,8 +2078,7 @@ void Yaz_Proxy::HTTP_Forwarded(Z_GDU *z_gdu)
         Z_HTTP_Request *hreq = z_gdu->u.HTTP_Request;
 
         const char *x_forwarded_for = nullptr;
-        auto header = hreq->headers;
-        while(header)
+        for (auto header = hreq->headers; header; header = header->next)
         {
             if (!yaz_strcasecmp(header->name, "X-Forwarded-For"))
             {
@@ -2096,7 +2095,6 @@ void Yaz_Proxy::HTTP_Forwarded(Z_GDU *z_gdu)
                     x_forwarded_for = pos;
                 }
             }
-            header = header->next;
         };
 
         if (x_forwarded_for)
