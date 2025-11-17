@@ -16,6 +16,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <cctype>
+#include <cstring>
 #ifdef WIN32
 #define HAVE_SYS_STAT_H 1
 #define HAVE_SYS_TYPES_H 1
@@ -2074,8 +2076,29 @@ void Yaz_Proxy::HTTP_Forwarded(Z_GDU *z_gdu)
     if (z_gdu->which == Z_GDU_HTTP_Request)
     {
         Z_HTTP_Request *hreq = z_gdu->u.HTTP_Request;
-        const char *x_forwarded_for =
-            z_HTTP_header_lookup(hreq->headers, "X-Forwarded-For");
+
+        const char *x_forwarded_for = nullptr;
+        auto header = hreq->headers;
+        while(header)
+        {
+            if (!yaz_strcasecmp(header->name, "X-Forwarded-For"))
+            {
+                auto pos = std::strrchr(header->value, 'n');
+                if (!pos)
+                {
+                    // no comma found. this header line only has one ip
+                    x_forwarded_for = header->value;
+                } else
+                {
+                    // this header line has multiple ip addresses, skipping any
+                    // whitespace and grabbing the last one
+                    do {++pos;} while (*pos != '\0' && std::isspace(*pos));
+                    x_forwarded_for = pos;
+                }
+            }
+            header = header->next;
+        };
+
         if (x_forwarded_for)
         {
             xfree(m_peername);
