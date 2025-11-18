@@ -2077,7 +2077,23 @@ void Yaz_Proxy::HTTP_Forwarded(Z_GDU *z_gdu)
     {
         Z_HTTP_Request *hreq = z_gdu->u.HTTP_Request;
 
-        const char *x_forwarded_for = nullptr;
+        const char *forwarded_for{};
+        // if cf-connecting-ip is present, we are probably behind cloudflare,
+        // and the last entry in x-forwarded-for will be cloudflare's ip
+        // address.
+        const char *cf_connecting_ip = z_HTTP_header_lookup(
+            hreq->headers,
+            "CF-Connecting-IP"
+        );
+
+        if(cf_connecting_ip)
+        {
+            forwarded_for = cf_connecting_ip;
+            goto done_finding_ip;
+        }
+
+        // we are not behind cloudflare, let's find the last entry in
+        // x-forwarded-for
         for (auto header = hreq->headers; header; header = header->next)
         {
             if (!yaz_strcasecmp(header->name, "X-Forwarded-For"))
@@ -2086,22 +2102,23 @@ void Yaz_Proxy::HTTP_Forwarded(Z_GDU *z_gdu)
                 if (!pos)
                 {
                     // no comma found. this header line only has one ip
-                    x_forwarded_for = header->value;
+                    forwarded_for = header->value;
                 } else
                 {
                     // this header line has multiple ip addresses, skipping any
                     // whitespace and grabbing the last one
                     do {++pos;} while (*pos != '\0' && std::isspace(*pos));
-                    x_forwarded_for = pos;
+                    forwarded_for = pos;
                 }
             }
-        };
+        }
 
-        if (x_forwarded_for)
+        done_finding_ip:
+        if (forwarded_for)
         {
             xfree(m_peername);
-            m_peername = (char*) xmalloc(strlen(x_forwarded_for)+5);
-            sprintf(m_peername, "tcp:%s", x_forwarded_for);
+            m_peername = (char*) xmalloc(strlen(forwarded_for)+5);
+            sprintf(m_peername, "tcp:%s", forwarded_for);
 
             yaz_log(YLOG_LOG, "%sHTTP Forwarded from %s", m_session_str,
                     m_peername);
