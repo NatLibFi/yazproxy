@@ -365,6 +365,8 @@ int my_authenticate(void *user_handle,
         const char *pIP = peer_IP;
         if (strncmp(pIP, "tcp:", 4) == 0)
             pIP += 4;
+        if (strncasecmp(pIP, "::ffff:", 7) == 0)
+            pIP += 7;
 
         struct sockaddr_storage peer_address;
         int int_parse_status = str_to_address(pIP, &peer_address);

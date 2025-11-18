@@ -262,6 +262,7 @@ INSTANTIATE_TEST_SUITE_P(
     Authenticate, AuthIpRulesFixture,
     ::testing::Values(AuthTestParam{"198.51.100.2", YAZPROXY_RET_OK},
                       AuthTestParam{"198.51.100.50", YAZPROXY_RET_OK},
+                      AuthTestParam{"::ffff:10.12.100.200", YAZPROXY_RET_OK},
                       AuthTestParam{"10.0.0.25", YAZPROXY_RET_PERM},
                       AuthTestParam{"198.51.100.30", YAZPROXY_RET_PERM},
                       AuthTestParam{"2001:14ba:d1::12:34", YAZPROXY_RET_PERM}));
